@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+        <title>Texas</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.2.0/leaflet.css" type="text/css" crossorigin="">
+        <link rel="stylesheet" href="https://code.jquery.com/ui/1.9.2/themes/base/jquery-ui.css" type="text/css">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.2.0/leaflet.js" crossorigin=""></script>
+        <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+        <script src="//code.jquery.com/ui/1.9.2/jquery-ui.js"></script>
+        <script src="countyData.js"></script>
+        <script src="txAirportBoundaries.js"></script>
+        <script src="txRailroads.js"></script>
+        <script src="parks.js"></script>
+        <script src="radioactiveSites.js"></script>
+        <link rel="stylesheet" href="style.css" type="text/css">
+        <script type="text/javascript">
+            var map;
+            function init() {
+                // create map and set center and zoom level
+                try {
+                    map = new L.map('mapid');
+                    map.setView([31.9686, -99.9018], 5);
+                    map.options.minZoom = 5;
+                    map.options.maxZoom = 12;
+                    // create tile layer and add it to map
+                    var tiles = L.tileLayer('http://personal.psu.edu/alf33/tiles/TexasBasemap/{z}/{x}/{y}.png', {
+                        name: 'Texas Counties',
+                        attribution: '<p style="font-size:x-small"><a href ="https://www.txdot.gov/">Texas Department of Transportation</a><br/><a href="https://www.tceq.texas.gov/gis/metadata/radio_met.html">Texas Commission on Environmental Quality</a><br/><a href="https://tpwd.texas.gov/gis/">Texas Parks & Wildlife</a><br/><a href="https://tnris.org/data-download/#!/statewide">Texas Natural Resources Information System</a><br/><a href="http://www.depts.ttu.edu/geospatial/center/TexasCountiesGISData.html#">Texas Tech University</a></p>',
+                        visible: true,
+                        zIndex: 0
+                    });
+                    //go ahead and add this base layer now
+                    tiles.addTo(map);
+
+                    //add a 2nd base layer option
+                    var osmLayer = L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        name: 'OpenStreetMap',
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                        type: 'xyz',
+                        visible: false,
+                        zIndex: 0
+                    });
+                    //layers
+                    var countyLayer;
+                    var railroadLayer;
+                    var airportLayer;
+                    var parkLayer;
+                    var radioactiveLayer;
+
+
+                    var featureSelection;
+                    var featureLayer;
+
+                    //county layer styles
+                    function countyStyle(feature) {
+                        //console.log("countyStyle()");
+                        return {
+                            fill: true,
+                            stroke: true,
+                            color: '#000000',
+                            fillColor: "#f2f2f2",
+                            fillOpacity: 0.1,
+                            weight: 0.1,
+                            opacity: 0
+                        };
+                    }
+
+                    function countySelectedStyle(feature) {
+                        //console.log("countySelectedStyle()");
+                        return {
+                            fill: true,
+                            stroke: true,
+                            fillColor: '#e8fdfb',
+                            color: '#095d58',
+                            fillOpacity: 0.75,
+                            weight: 3,
+                            opacity: 1
+                        };
+                    }
+
+                    // handle click events on county features
+                    function countyOnEachFeature(feature, layer) {
+                        //console.log("countyOnEachFeature()");
+                        try {
+                            layer.on({
+                                add: function () {
+                                    layer.bringToBack();
+                                },
+                                remove: function () {
+                                    $("#legend").html("<br/>");
+                                },
+                                click: function (e) {
+                                    //console.log("inisde county click function");
+                                    try {
+                                        if (featureSelection) {
+                                            resetStyles();
+                                        }
+                                        e.target.setStyle(countySelectedStyle());
+                                        featureSelection = e.target;
+                                        featureLayer = countyLayer;
+                                        // Insert some HTML with the feature name
+                                        writeCountyDiv(feature);
+
+                                        //reset the summary label for all other features
+                                        $("#summaryLabel").html('<br/>');
+                                        $("#legend").html("<br/>");
+                                        // stop click event from being propagated further
+                                        L.DomEvent.stopPropagation(e);
+                                    } catch (e) {
+                                        console.log("Exception caught in county click function: " + e);
+                                    }
+                                },
+                                mouseover: function (e) {
+                                    try {
+                                        writeCountyDiv(feature);
+                                    } catch (e) {
+                                        console.error("Exception caught in county click function: " + e);
+                                    }
+                                }
+                            });
+                        } catch (e) {
+                            log.error("Exception caught in countyOnEachFeature: " + e);
+                        }
+                    }
+
+                    // add the county GeoJSON layer using the countyData variable from countyData.js
+                    var countyLayer = new L.geoJSON(countyData, {
+                        style: countyStyle,
+                        onEachFeature: countyOnEachFeature,
+                    });
+
+                    //go ahead and add to map now so accessible on load
+                    countyLayer.addTo(map);
+
+                    // create icons for radioactive (selected and unselected)
+                    var radioactiveIcon = L.icon({
+                        iconUrl: 'skull.svg',
+                        iconSize: [20, 20]
+                    });
+                    var radioactiveSelectedIcon = L.icon({
+                        iconUrl: 'skull_select.svg',
+                        iconSize: [20, 20]
+                    });
+                    // handle click events on radioactive features
+                    function radioactiveOnEachFeature(feature, layer) {
+                        layer.on({
+                            add: function () {
+                                //layer.bringToFront();
+                            },
+                            remove: function () {
+                                $("#legend").html("<br/>");
+                            },
+                            click: function (e) {
+                                if (featureSelection) {
+                                    resetStyles();
+                                }
+
+                                e.target.setIcon(radioactiveSelectedIcon);
+                                featureSelection = e.target;
+                                featureLayer = radioactiveLayer;
+                                //popuup
+                                // Set up popup for clicked feature and open it
+                                var popup = new L.Popup({
+                                    maxWidth: 100
+                                });
+
+                                popup.setContent("<b>" + feature.properties.FACILITY + "</b>");
+                                popup.setLatLng(e.latlng);
+                                //console.log("popup instantiated and content/location set");
+                                map.openPopup(popup);
+
+
+                                // Insert some HTML with the feature name
+                                var featurePropertiesList = ["FACILITY", "PHYSICAL_L", "CITY", "ZIP", "PHONE", "CONTACT"];
+                                buildSummaryLabel(feature, featurePropertiesList);
+                                $("#legend").html("<br/>");
+                                buildRadioactiveLegendDiv();
+                                // stop click event from being propagated further
+                                L.DomEvent.stopPropagation(e);
+                            }
+                        });
+                    }
+
+
+                    // add the radioactive point data from js
+                    radioactiveLayer = new L.geoJSON(radioactiveData, {
+                        pointToLayer: function (feature, latlng) {
+                            return L.marker(latlng, {icon: radioactiveIcon});
+                        },
+                        onEachFeature: radioactiveOnEachFeature
+                    });
+
+
+
+                    //railroad layer styles
+                    function railroadStyle(feature) {
+                        //console.log("railroadStyle()");
+                        var unselectedColor;
+                        var railCompany = feature.properties["RR_COMPANY"];
+                        //console.log("rail company: " + railCompany);
+                        if (railCompany !== null && railCompany.indexOf("BNSF") > -1) {
+                            unselectedColor = "#000099";
+                        } else if (railCompany !== null && railCompany.indexOf("Kansas") > -1) {
+                            unselectedColor = "#ff9933";
+                        } else if (railCompany !== null && railCompany.indexOf("Texas") > -1) {
+                            unselectedColor = "#990099";
+                        } else if (railCompany !== null && railCompany.indexOf("Union") > -1) {
+                            unselectedColor = "#ff0000";
+                        } else {
+                            unselectedColor = "#996633";
+                        }
+
+                        return {
+                            stroke: true,
+                            color: unselectedColor,
+                            weight: 3,
+                            opacity: 1,
+                            dashArray: '10,10',
+                            lineJoin: 'butt'
+
+                        };
+                    }
+
+                    function railroadSelectedStyle(feature) {
+                        //console.log("railroadSelectedStyle(feature: " + feature + ")");
+                        try {
+                            var selectedColor;
+                            var railCompany = feature.properties["RR_COMPANY"];
+                            //console.log("rail company: " + railCompany);
+                            if (railCompany !== null && railCompany.indexOf("BNSF") > -1) {
+                                selectedColor = "#ccccff";
+                            } else if (railCompany !== null && railCompany.indexOf("Kansas") > -1) {
+                                selectedColor = "#ffe6cc";
+                            } else if (railCompany !== null && railCompany.indexOf("Texas") > -1) {
+                                selectedColor = "#ffe6ff";
+                            } else if (railCompany !== null && railCompany.indexOf("Union") > -1) {
+                                selectedColor = "#ffb3b3";
+                            } else {
+                                selectedColor = "#e6ccb3";
+                            }
+                            return {
+                                stroke: true,
+                                color: selectedColor,
+                                weight: 3,
+                                opacity: 1,
+                                dashArray: '10,10',
+                                lineJoin: 'butt'
+                            };
+                        } catch (e) {
+                            console.error("Exception caught in railroadSelectedStyle: " + e);
+                        }
+                    }
+
+                    // handle click events on railroad features
+                    function railroadOnEachFeature(feature, layer) {
+                        //console.log("railroadOnEachFeature()");
+                        try {
+                            layer.on({
+                                add: function () {
+                                    layer.bringToFront();
+                                    buildRailroadLegendDiv();
+                                },
+                                remove: function () {
+                                    $("#legend").html("<br/>");
+                                },
+                                click: function (e) {
+                                    console.log("inisde railroad click function");
+                                    try {
+                                        if (featureSelection) {
+                                            resetStyles();
+                                        }
+                                        e.target.setStyle(railroadSelectedStyle(feature));
+                                        featureSelection = e.target;
+                                        featureLayer = railroadLayer;
+
+                                        // Insert some HTML with the feature name
+                                        var featurePropertiesList = ["RR_COMPANY", "RR_STATUS", "RR_TYP", "RR_NBR"];
+                                        buildSummaryLabel(feature, featurePropertiesList);
+                                        $("#legend").html("<br/>");
+                                        buildRailroadLegendDiv();
+                                        //popuup
+                                        // Set up popup for clicked feature and open it
+                                        var popup = new L.Popup({
+                                            maxWidth: 100
+                                        });
+
+                                        popup.setContent("<b>" + feature.properties["RR_COMPANY"] + "</b>");
+                                        popup.setLatLng(e.latlng);
+                                        //console.log("popup instantiated and content/location set");
+                                        map.openPopup(popup);
+
+
+
+                                        // stop click event from being propagated further
+                                        L.DomEvent.stopPropagation(e);
+                                    } catch (e) {
+                                        console.log("Exception caught in railroad click function: " + e);
+                                    }
+                                }
+                            });
+                        } catch (e) {
+                            log.error("Exception caught in railroadOnEachFeature: " + e);
+                        }
+                    }
+
+                    function railroadFilterActive(feature, layer) {
+                        //console.log("railroadFilterActive");
+                        if (feature.properties.RR_STATUS === "Active") {
+                            return true;
+                        } else {
+                            //console.log("railroad not active: " + feature.properties.RR_COMPANY);
+                            return false;
+                        }
+                    }
+
+
+                    // add the railroad GeoJSON layer using the railroadData variable from railroadData.js
+                    var railroadLayer = new L.geoJSON(railroadData, {
+                        style: railroadStyle,
+                        onEachFeature: railroadOnEachFeature,
+                        filter: railroadFilterActive
+                    });
+
+                    //airport layer styles
+                    function airportStyle(feature) {
+                        //console.log("airportStyle()");
+                        return {
+                            fill: true,
+                            stroke: true,
+                            color: '#cc9900',
+                            fillColor: "#ffffcc",
+                            fillOpacity: 0.5,
+                            weight: 1,
+                            opacity: 1
+                        };
+                    }
+
+                    function airportSelectedStyle(feature) {
+                        // console.log("airportSelectedStyle()");
+                        return {
+                            fill: true,
+                            stroke: true,
+                            fillColor: '#ffff00',
+                            color: '#000000',
+                            fillOpacity: 1,
+                            weight: 3,
+                            opacity: 1
+
+                        };
+                    }
+
+                    // handle click events on airport features
+                    function airportOnEachFeature(feature, layer) {
+                        // console.log("airportOnEachFeature()");
+                        try {
+                            layer.on({
+                                add: function () {
+                                    layer.bringToFront();
+                                },
+                                remove: function () {
+                                    $("#legend").html("<br/>");
+                                },
+                                click: function (e) {
+                                    console.log("inisde airport click function");
+                                    try {
+                                        if (featureSelection) {
+                                            resetStyles();
+                                        }
+                                        e.target.setStyle(airportSelectedStyle());
+                                        featureSelection = e.target;
+                                        featureLayer = airportLayer;
+                                        //popuup
+                                        // Set up popup for clicked feature and open it
+                                        var popup = new L.Popup({
+                                            maxWidth: 100
+                                        });
+
+                                        popup.setContent("<b>" + feature.properties.ARPT_NM + "</b>");
+                                        popup.setLatLng(e.latlng);
+                                        //console.log("popup instantiated and content/location set");
+                                        map.openPopup(popup);
+
+
+                                        // Insert some HTML with the feature name
+                                        var featurePropertiesList = ["ARPT_NM", "ARPT_TYP"];
+                                        buildSummaryLabel(feature, featurePropertiesList);
+                                        $("#legend").html("<br/>");
+                                        buildAirportLegendDiv();
+                                        // stop click event from being propagated further
+                                        L.DomEvent.stopPropagation(e);
+                                    } catch (e) {
+                                        console.log("Exception caught in airport click function: " + e);
+                                    }
+                                }
+                            });
+                        } catch (e) {
+                            log.error("Exception caught in airportOnEachFeature: " + e);
+                        }
+                    }
+
+                    // add the airport GeoJSON layer using the airportData variable from airportData.js
+                    var airportLayer = new L.geoJSON(airportData, {
+                        style: airportStyle,
+                        onEachFeature: airportOnEachFeature
+                    });
+
+                    //park layer styles
+                    function parkStyle(feature) {
+                        // console.log("parkStyle()");
+                        return {
+                            fill: true,
+                            stroke: true,
+                            color: '#2d862d',
+                            fillColor: "#c6ecc6",
+                            fillOpacity: 0.5,
+                            weight: 1,
+                            opacity: 1
+                        };
+                    }
+
+                    function parkSelectedStyle(feature) {
+                        //  console.log("parkSelectedStyle()");
+                        return {
+                            fill: true,
+                            stroke: true,
+                            fillColor: '#66ff66',
+                            color: '#00ff00',
+                            fillOpacity: 0.75,
+                            weight: 3,
+                            opacity: 1
+
+                        };
+                    }
+
+                    // handle click events on park features
+                    function parkOnEachFeature(feature, layer) {
+                        //  console.log("parkOnEachFeature()");
+                        try {
+                            layer.on({
+                                add: function () {
+                                    layer.bringToFront();
+                                },
+                                remove: function () {
+                                    $("#legend").html("<br/>");
+                                },
+                                click: function (e) {
+                                    console.log("inisde park click function");
+                                    try {
+                                        if (featureSelection) {
+                                            resetStyles();
+                                        }
+                                        e.target.setStyle(parkSelectedStyle());
+                                        featureSelection = e.target;
+                                        featureLayer = parkLayer;
+                                        //popuup
+                                        // Set up popup for clicked feature and open it
+                                        var popup = new L.Popup({
+                                            maxWidth: 100
+                                        });
+
+                                        popup.setContent("<b>" + feature.properties.LoName + "</b>");
+                                        popup.setLatLng(e.latlng);
+                                        //console.log("popup instantiated and content/location set");
+                                        map.openPopup(popup);
+
+
+                                        // Insert some HTML with the feature name
+                                        var featurePropertiesList = ["LoName", "CalcAcres"];
+                                        buildSummaryLabel(feature, featurePropertiesList);
+                                        $("#legend").html("<br/>");
+                                        buildParkLegendDiv();
+                                        // stop click event from being propagated further
+                                        L.DomEvent.stopPropagation(e);
+                                    } catch (e) {
+                                        console.error("Exception caught in park click function: " + e);
+                                    }
+                                }
+                            });
+                        } catch (e) {
+                            log.error("Exception caught in parkOnEachFeature: " + e);
+                        }
+                    }
+
+                    // add the park GeoJSON layer using the parkData variable from parkData.js
+                    var parkLayer = new L.geoJSON(parkData, {
+                        style: parkStyle,
+                        onEachFeature: parkOnEachFeature
+                    });
+
+
+
+                    var basemaps = {
+                        "Texas": tiles,
+                        "OpenStreetMap": osmLayer
+                    };
+                    var overlays = {
+                        "Counties": countyLayer,
+                        "Airports": airportLayer,
+                        "State Parks": parkLayer,
+                        "Active Railroads": railroadLayer,
+                        "Radioactive Sites": radioactiveLayer
+                    };
+                    L.control.layers(basemaps, overlays).addTo(map);
+
+
+                    // handle clicks on the map that didn't hit a feature
+                    map.addEventListener('click', function (e) {
+                        //console.log("map click");
+                        //console.log("featureSelection: " + featureSelection);
+                        //console.log("feature layer: " + featureLayer);
+                        try {
+                            if (featureSelection) {
+                                resetStyles();
+                                featureSelection = null;
+                                $("#summaryLabel").html('<br/>');
+                                $("#countyDiv").html('<h3>Texas Counties and Features</h3><ul><li>Use the Layer Control to select basemap and overalys</li><li>Zoom to see additional basemap details</li><li>Click on a county, airport, park, railroad, or radioactive site to see feature-specific information</li></ul>');
+                            }
+                        } catch (e) {
+                            console.error("Exception caught handling map click: " + e);
+                        }
+                    });
+
+
+                    // function to set the old selected feature back to its original symbol. Used when the map or a feature is clicked.
+                    function resetStyles() {
+                        console.log("inside resetStyles");
+                        console.log("featureLayer: " + featureLayer);
+                        try {
+                            if (featureLayer === radioactiveLayer) {
+                                featureSelection.setIcon(radioactiveIcon);
+                            } else if (featureLayer === countyLayer || featureLayer === railroadLayer || featureLayer === airportLayer || featureLayer === parkLayer) {
+                                console.log("resetting featureSelection");
+                                featureLayer.resetStyle(featureSelection);
+                            }
+                            $("#countyDiv").html('<h3>Texas Counties and Features</h3><ul><li>Use the Layer Control to select basemap and overalys</li><li>Zoom to see additional basemap details</li><li>Click on a county, airport, park, railroad, or radioactive site to see feature-specific information</li></ul>');
+                        } catch (e) {
+                            console.error("exception caught in resetStyles: " + e);
+                        }
+                    }
+
+
+
+
+                    // function to build the HTML for county div tag
+                    function writeCountyDiv(currentFeature) {
+                        var propertiesObject = currentFeature.properties;
+                        //construct the html 
+                        var countyDivHTML = "<br/><b>County Name: </b>" + propertiesObject["CNTY_NM"] + "<br/><b>Total Area: </b>" + propertiesObject["AREA_SQMI"] + " square miles";
+                        countyDivHTML += "<br/><b>Land Area: </b>" + propertiesObject["LAND_SQMI"] + " square miles";
+                        countyDivHTML += "<br/><b>Water Area: </b>" + propertiesObject["WATER_SQMI"] + " square miles";
+                        countyDivHTML += '<br/><br/><table border="0" cellspacing="0" cellpadding="0">';
+                        countyDivHTML += '<tr><td>';
+                        countyDivHTML += 'County Information provided by <a href="http://www.depts.ttu.edu/geospatial/center/TexasCountiesGISData.html#">Texas Tech University</a>';
+                        countyDivHTML += '</td></tr>';
+                        countyDivHTML += '</table><br/><br/>';
+                        //set countyDiv content
+                        $("#countyDiv").html(countyDivHTML)
+                    }
+
+                    // function to build the HTML for the summary label using the selected feature's "name" property
+                    function buildSummaryLabel(currentFeature, featurePropertiesList) {
+                        var propertiesObject = currentFeature.properties;
+                        var html = '<p style="font-size:12px">';
+                        for (var i = 0; i < featurePropertiesList.length; i++) {
+                            var property = featurePropertiesList[i];
+                            var value = propertiesObject[property];
+                            html += '<b>' + property + ': </b>' + value + '<br/>';
+                        }
+                        html += '</p>'
+                        $("#summaryLabel").html(html);
+                    }
+
+                    function buildRailroadLegendDiv() {
+                        //console.log("buildRailroadLegendDiv()");
+                        var legendHTML = '<br/><br/><br/><table border="0" cellspacing="3" cellpadding="3">';
+                        legendHTML += '<tr>';
+                        legendHTML += '<td bgcolor="#000099"><p style="color:white">BNSF Railway Company</p></td>';
+                        legendHTML += '</tr>';
+                        legendHTML += '<tr>';
+                        legendHTML += '<td bgcolor="#ff9933"><p style="color:white">Kansas City Southern Railway</p></td>';
+                        legendHTML += '</tr>';
+                        legendHTML += '<tr>';
+                        legendHTML += '<td bgcolor="#990099"><p style="color:white">Texas Pacifico Transportation Limited</p></td>';
+                        legendHTML += '</tr>';
+                        legendHTML += '<tr>';
+                        legendHTML += '<td bgcolor="#ff0000"><p style="color:white">Union Pacific Railroad Company</p></td>';
+                        legendHTML += '</tr>';
+                        legendHTML += '<tr>';
+                        legendHTML += '<td bgcolor="#996633"><p style="color:white">Other</p></td>';
+                        legendHTML += '</tr>';
+                        legendHTML += '</table>';
+                        legendHTML += '<br/><br/><br/><table border="0" cellspacing="0" cellpadding="0">';
+                        legendHTML += '<tr><td>';
+                        legendHTML += 'Railroad Information provided by <a href="http://gis-txdot.opendata.arcgis.com/datasets/texas-railroads">Texas Department of Transportation</a>';
+                        legendHTML += '</td></tr>';
+                        legendHTML += '</table>';
+                        //console.log("legendHTML: " + legendHTML);
+                        $("#legend").html(legendHTML);
+                    }
+
+                    function buildRadioactiveLegendDiv() {
+                        var legendHTML = '<br/><br/><br/><table border="0" cellspacing="0" cellpadding="0">';
+                        legendHTML += '<tr><td>';
+                        legendHTML += 'Radioactive Site Information provided by <a href="https://www.tceq.texas.gov/gis/metadata/radio_met.html">Texas Commission on Environmental Quality</a>';
+                        legendHTML += '</td></tr>';
+                        legendHTML += '</table>';
+                        //console.log("legendHTML: " + legendHTML);
+                        $("#legend").html(legendHTML);
+                    }
+                    function buildAirportLegendDiv() {
+                        var legendHTML = '<br/><br/><br/><table border="0" cellspacing="0" cellpadding="0">';
+                        legendHTML += '<tr><td>';
+                        legendHTML += 'Aiport Boundary Information provided by <a href="http://gis-txdot.opendata.arcgis.com/datasets/d01ffbb96b4148a0b65c6a09ce6c8f45_0">Texas Department of Transportation</a>';
+                        legendHTML += '</td></tr>';
+                        legendHTML += '</table>';
+                        //console.log("legendHTML: " + legendHTML);
+                        $("#legend").html(legendHTML);
+                    }
+
+                    function buildParkLegendDiv() {
+                        var legendHTML = '<br/><br/><br/><table border="0" cellspacing="0" cellpadding="0">';
+                        legendHTML += '<tr><td>';
+                        legendHTML += 'State Park Boundary Information provided by <a href="https://tpwd.texas.gov/gis/">Texas Parks & Wildlife</a>';
+                        legendHTML += '</td></tr>';
+                        legendHTML += '</table>';
+                        //console.log("legendHTML: " + legendHTML);
+                        $("#legend").html(legendHTML);
+                    }
+                } catch (e) {
+                    console.error("Exception caught building map: " + e);
+                }
+            }
+        </script>
+    </head>
+    <body onload="init()">
+        <h1 id="title">Is *Everything* Bigger In Texas?</h1>
+        <table border="0" cellpadding="3" cellspacing="0">
+            <tr>
+                <td valign="top">
+                    <div id="mapid">
+                    </div>
+                </td>
+                <td valign="top">
+                    <div id="countyDiv">
+                        <h3>Texas Counties and Features</h3>
+                        <ul>
+                            <li>Use the Layer Control to select basemap and overalys</li>
+                            <li>Zoom to see additional basemap details</li>
+                            <li>Click on a county, airport, park, railroad, or radioactive site to see feature-specific information</li>
+                        </ul>
+                    </div>
+                    <div id="summaryLabel">
+
+                    </div>
+                    <div id="legend">
+
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </body>
+</html>

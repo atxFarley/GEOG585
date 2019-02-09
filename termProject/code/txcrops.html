@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+        <title>Texas Cropland Usage</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.2.0/leaflet.css" type="text/css" crossorigin="">
+        <link rel="stylesheet" href="https://code.jquery.com/ui/1.9.2/themes/base/jquery-ui.css" type="text/css">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.2.0/leaflet.js"></script>
+        <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+        <script src="//code.jquery.com/ui/1.9.2/jquery-ui.js"></script>
+        <script src="SliderControl.js"></script>
+
+        <link rel="stylesheet" href="style.css" type="text/css">
+        <script type="text/javascript">
+            var map;
+
+            function init() {
+                // create map and set center and zoom level
+                try {
+                    map = new L.map('mapid');
+                    map.setView([31.9686, -99.9018], 5);
+                    map.options.minZoom = 5;
+                    map.options.maxZoom = 12;
+
+                    // create tile layer and add it to map
+                    var tiles = L.tileLayer('http://personal.psu.edu/alf33/tiles/TexasBasemap/{z}/{x}/{y}.png', {
+                        name: 'Texas Counties',
+                        attribution: '<a href ="https://www.txdot.gov/">Texas Department of Transportation</a><br/> <a href="https://tnris.org/">Texas Natural Resources Information System</a><br/><a href="http://www.twdb.texas.gov/"> Texas Water Development Board</a><br/><a href="https://nassgeodata.gmu.edu/CropScape/"> U.S. Department of Agriculture</a>',
+                        visible: true,
+                        zIndex: 0
+                    });
+                    tiles.addTo(map);
+
+                    // define event handler function for click events and register it
+                    function Identify(e) {
+                        // set parameters needed for GetFeatureInfo WMS request
+                        console.log("in identify");
+                        var sw = map.options.crs.project(map.getBounds().getSouthWest());
+                        var ne = map.options.crs.project(map.getBounds().getNorthEast());
+                        var BBOX = sw.x + "," + sw.y + "," + ne.x + "," + ne.y;
+                        var WIDTH = map.getSize().x;
+                        var HEIGHT = map.getSize().y;
+
+                        var X = Math.trunc(map.layerPointToContainerPoint(e.layerPoint).x);
+                        var Y = Math.trunc(map.layerPointToContainerPoint(e.layerPoint).y);
+
+                        // compose the URL for the request
+                        var URL = 'http://localhost:8080/geoserver/geog585/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&LAYERS=termProjectVector:FullTXCountyBoundaries&QUERY_LAYERS=termProjectVector:FullTXCountyBoundaries&BBOX=' + BBOX + '&FEATURE_COUNT=1&HEIGHT=' + HEIGHT + '&WIDTH=' + WIDTH + '&INFO_FORMAT=application%2Fjson&TILED=false&CRS=EPSG%3A3857&I=' + X + '&J=' + Y;
+
+                        //send GetFeatureInfo as asynchronous HTTP request using jQuery $.ajax
+                        $.ajax({
+                            url: URL,
+                            dataType: "json",
+                            type: "GET",
+                            success: function (data) {
+                                if (data.features.length !== 0) {  // at least one feature returned in response
+                                    try {
+                                        var returnedFeature = data.features[0]; // first feature from response
+                                        var propertiesObject = returnedFeature.properties;
+                                        console.log("propertiesObject: " + propertiesObject);
+
+                                        //year selection in time slider determines some of the popuup content and html div content
+                                        var cropyear = $("#slider-timestamp").html();
+                                        console.log("slider selection: " + cropyear);
+                                        var cropPercentFieldName = "cropct" + cropyear;
+                                        var crop_percent = Math.round((propertiesObject[cropPercentFieldName] * 100));
+                                        console.log("crop_percent: " + crop_percent);
+
+
+                                        // Set up popup for clicked feature and open it
+                                        var popup = new L.Popup({
+                                            maxWidth: 300
+                                        });
+
+                                        popup.setContent("<b>" + returnedFeature.properties.CNTY_NM + "</b><br />Area in square miles: " + returnedFeature.properties.AREA_SQMI + "<br/>Cropland percentage in " + cropyear + ": " + crop_percent + "%");
+                                        popup.setLatLng(e.latlng);
+                                        console.log("popup instantiated and content/location set");
+                                        map.openPopup(popup);
+
+                                        //construct the html for the selected county for the selected year
+                                        var cropDivHTML = "<br/><b>County Name: </b>" + propertiesObject["CNTY_NM"] + "<br/><b>Total Area: </b>" + propertiesObject["AREA_SQMI"] + " square miles";
+                                        cropDivHTML += "<br/><b>Land Area: </b>" + propertiesObject["LAND_SQMI"] + " square miles";
+                                        cropDivHTML += "<br/><b>Water Area: </b>" + propertiesObject["WATER_SQMI"] + " square miles";
+                                        cropDivHTML += "<BR/><BR/><b>" + cropyear + " Cropland Usage</b></br/>"
+                                        cropDivHTML += "<br/><b>Percentage of area used for cropland: </b>" + Math.round((propertiesObject[cropPercentFieldName] * 100)) + "%";
+                                        cropDivHTML += "<br/><b>Top 3 crops: </b>" + propertiesObject["top3_" + cropyear];
+                                        cropDivHTML += "<br/><b>Specialty Crop Percentage: </b>" + Math.round((propertiesObject["pctsc" + cropyear] * 100)) + "%";
+                                        cropDivHTML += "<br/><b>Specialty crops: </b>" + propertiesObject["sc" + cropyear];
+
+                                        //set cropDiv content
+                                        $("#cropDiv").html(cropDivHTML)
+
+
+
+                                    } catch (e) {
+                                        console.error("error constructing popup from getfeatureinfo return: " + e);
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    map.addEventListener('click', Identify);
+                    console.log("map base layer and interactive features defined. ");
+                } catch (e) {
+                    console.log("Exception caught: " + e);
+                }
+                try {
+                    // create wms layers for each year
+                    var txcrops2017 = L.tileLayer.wms('http://localhost:8080/geoserver/geog585/wms', {
+                        layers: '2017_cropland_raster:2017_cropland_raster',
+                        time: '2017',
+                        format: 'image/png',
+                        transparent: true
+                    });
+                    var txcrops2016 = L.tileLayer.wms('http://localhost:8080/geoserver/geog585/wms', {
+                        layers: '2016_cropland_raster:2016_cropland_raster',
+                        time: '2016',
+                        format: 'image/png',
+                        transparent: true
+                    });
+
+                    var txcrops2015 = L.tileLayer.wms('http://localhost:8080/geoserver/geog585/wms', {
+                        layers: '2015_cropland_raster:2015_cropland_raster',
+                        time: '2015',
+                        format: 'image/png',
+                        transparent: true
+                    });
+
+                    var txcrops2014 = L.tileLayer.wms('http://localhost:8080/geoserver/geog585/wms', {
+                        layers: '2014_cropland_raster:2014_cropland_raster',
+                        time: '2014',
+                        format: 'image/png',
+                        transparent: true
+                    });
+                    var txcrops2013 = L.tileLayer.wms('http://localhost:8080/geoserver/geog585/wms', {
+                        layers: '2013_cropland_raster:2013_cropland_raster',
+                        time: '2013',
+                        format: 'image/png',
+                        transparent: true
+                    });
+                    var txcrops2012 = L.tileLayer.wms('http://localhost:8080/geoserver/geog585/wms', {
+                        layers: '2012_cropland_raster:2012_cropland_raster',
+                        time: '2012',
+                        format: 'image/png',
+                        transparent: true
+                    });
+                    var txcrops2011 = L.tileLayer.wms('http://localhost:8080/geoserver/geog585/wms', {
+                        layers: '2011_cropland_raster:2011_cropland_raster',
+                        time: '2011',
+                        format: 'image/png',
+                        transparent: true
+                    });
+                    var txcrops2010 = L.tileLayer.wms('http://localhost:8080/geoserver/geog585/wms', {
+                        layers: '2010_cropland_raster:2010_cropland_raster',
+                        time: '2010',
+                        format: 'image/png',
+                        transparent: true
+                    });
+                    var txcrops2009 = L.tileLayer.wms('http://localhost:8080/geoserver/geog585/wms', {
+                        layers: '2009_cropland_raster:2009_cropland_raster',
+                        time: '2009',
+                        format: 'image/png',
+                        transparent: true
+                    });
+                    var txcrops2008 = L.tileLayer.wms('http://localhost:8080/geoserver/geog585/wms', {
+                        layers: '2008_cropland_raster:2008_cropland_raster',
+                        time: '2008',
+                        format: 'image/png',
+                        transparent: true
+
+                    });
+                    console.log("created all wms layer variables");
+
+
+                    //add wms crop layers to slider control    
+                    var years = [txcrops2017, txcrops2016, txcrops2015, txcrops2014, txcrops2013, txcrops2012, txcrops2011, txcrops2010, txcrops2009, txcrops2008];
+                    layerGroup = L.layerGroup(years);
+                    //instantiate slider control
+                    var sliderControl = L.control.sliderControl({
+                        position: "topright",
+                        layer: layerGroup,
+                        alwaysShowDate: true,
+                        timeStrLength: 4,
+                        showAllOnStart: true,
+                        follow: true
+                    });
+                    console.log("defined slider control");
+                    map.addControl(sliderControl);
+                    console.log("added slider control to map");
+                    sliderControl.startSlider();
+                    console.log("started slider control");
+                } catch (e) {
+                    console.log("Exception caught adding WMS Layers: " + e);
+                }
+            }
+        </script>
+    </head>
+    <body onload="init()">
+        <h1 id="title">Texas Cropland Usage</h1>
+        <table border="0" cellpadding="3" cellspacing="0">
+            <tr>
+                <td valign="top">
+                    <div id="mapid">
+                    </div>
+                </td>
+                <td valign="top">
+                    <div id="docs">
+                        <h3>Texas cropland changes from 2008 to 2017</h3>
+                        * Move the map slider to see crop usage for different years.
+                        <br/>
+                        * Click on a county to see information about that county for the selected year
+                        <br/>
+                    </div> 
+                    <div id="cropDiv">
+
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </body>
+</html>

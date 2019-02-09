@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+      <html>
+        <head>
+          <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+            <title>Farmers markets in Philadelphia</title>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.2.0/leaflet.css" type="text/css" crossorigin="">
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.2.0/leaflet.js"></script>
+            <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+            <link rel="stylesheet" href="style.css" type="text/css">
+            <script type="text/javascript">
+
+            var map;
+
+            function init() {
+              // create map and set center and zoom level
+
+              map = new L.map('mapid');
+              map.setView([39.9526,-75.1652],13);
+
+              // create tile layer and add it to map
+              var tiles = L.tileLayer('http://personal.psu.edu/alf33/tiles/PhillyBaseMap/{z}/{x}/{y}.png');
+              tiles.addTo(map);
+
+              // create wms layer
+              var farmerMarkets = L.tileLayer.wms('http://localhost:8080/geoserver/geog585/wms', {
+                layers: 'philadelphia:FarmersMarkets',
+                format: 'image/png',
+                transparent: true
+              });
+
+              farmerMarkets.addTo(map);
+
+              // define event handler function for click events and register it
+
+              function Identify(e)
+              {
+                // set parameters needed for GetFeatureInfo WMS request
+                var sw = map.options.crs.project(map.getBounds().getSouthWest());
+                var ne = map.options.crs.project(map.getBounds().getNorthEast());
+                var BBOX = sw.x + "," + sw.y + "," + ne.x + "," + ne.y;
+                var WIDTH = map.getSize().x;
+                var HEIGHT = map.getSize().y;
+
+                var X = Math.trunc(map.layerPointToContainerPoint(e.layerPoint).x);
+                var Y = Math.trunc(map.layerPointToContainerPoint(e.layerPoint).y);
+       
+                // compose the URL for the request
+                var URL = 'http://localhost:8080/geoserver/geog585/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&LAYERS=philadelphia:FarmersMarkets&QUERY_LAYERS=philadelphia:FarmersMarkets&BBOX='+BBOX+'&FEATURE_COUNT=1&HEIGHT='+HEIGHT+'&WIDTH='+WIDTH+'&INFO_FORMAT=application%2Fjson&TILED=false&CRS=EPSG%3A3857&I='+X+'&J='+Y;
+
+                //send GetFeatureInfo as asynchronous HTTP request using jQuery $.ajax
+
+                $.ajax({
+                   url: URL,
+                   dataType: "json",
+                   type: "GET",
+                   success: function(data)
+                   {
+                     if(data.features.length !== 0) {  // at least one feature returned in response
+                       var returnedFeature = data.features[0]; // first feature from response
+
+                       // Set up popup for clicked feature and open it
+                       var popup = new L.Popup({
+                         maxWidth: 300
+                       });
+
+                       popup.setContent("<b>" + returnedFeature.properties.NAME + "</b><br />" + returnedFeature.properties.ADDRESS);
+                       popup.setLatLng(e.latlng);
+                       map.openPopup(popup);
+                    }
+                  }
+                 });
+               }
+
+               map.addEventListener('click', Identify);
+
+             }
+    
+          </script>
+        </head>
+        <body onload="init()">
+          <h1 id="title">Farmers markets in Philadelphia</h1>
+          <div id="mapid">
+          </div>
+          <div id="docs">
+              <p>This page shows farmers markets in Philadelphia, Pennsylvania. Click a market to get more information.</p>
+          </div>
+        </body>
+      </html>
