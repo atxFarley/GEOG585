@@ -10,6 +10,6 @@ set GDAL_DATA=C:\QGIS3_4\share\gdal
 ECHO %GDAL_DATA%
 
 ECHO reproject features
-%ogr2ogrPath% -skipfailures -s_srs EPSG:4326 -t_srs EPSG:3857 C:\Users\Farley\iCloudDrive\PSUGIS\GEOG585\termProject\rawData\baselayer\reprojected\Texas_County_Boundaries.shp C:\Users\Farley\iCloudDrive\PSUGIS\GEOG585\termProject\rawData\baselayer\raw\Texas_County_Boundaries.shp
+%ogr2ogrPath% -skipfailures -s_srs EPSG:4326 -t_srs EPSG:3857 C:\Users\Farley\iCloudDrive\PSUGIS\GEOG585\termProject\rawData\baselayer\reprojected\MajorRivers_dd83.shp C:\Users\Farley\iCloudDrive\PSUGIS\GEOG585\termProject\majorRivers\MajorRivers_dd83.shp
 ECHO reprojection complete
 PAUSE
